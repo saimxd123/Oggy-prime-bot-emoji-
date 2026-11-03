@@ -1,8 +1,4 @@
-import asyncio
-import json
-import threading
-import requests
-import urllib3
+import asyncio, json, threading, requests, urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from config import BOT_TOKEN, OWNER_USERNAME, OWNER_ID
@@ -123,11 +119,8 @@ async def nav_edit(chat_id, message_id, text, kb_rows, parse_mode="HTML"):
         "chat_id": chat_id, "message_id": message_id,
         "caption": text, "parse_mode": parse_mode, "reply_markup": kb,
     }
-    resp = await asyncio.to_thread(
-        _raw_post,
-        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption",
-        cap_payload,
-    )
+    resp = await asyncio.to_thread(_raw_post,
+        f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageCaption", cap_payload)
     if resp.get("ok"):
         return resp
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
@@ -147,6 +140,9 @@ async def nav_edit(chat_id, message_id, text, kb_rows, parse_mode="HTML"):
     resp = await asyncio.to_thread(_raw_post, url, txt_payload)
     return resp
 
+# ══════════════════════════════════════════════════════════════
+# Rows
+# ══════════════════════════════════════════════════════════════
 def rows_main():
     return [
         [{"text": "💳  Checker",        "callback_data": "gates"}],
@@ -182,6 +178,8 @@ def rows_admin(uid: int = 0):
          {"text": "🌐  Sites",          "callback_data": "admin_sites"}],
         [{"text": "📡  Broadcast",      "callback_data": "admin_broadcast_info"},
          {"text": "⚙️  Proxy Pool",    "callback_data": "admin_proxy_pool"}],
+        [{"text": "📦  Backup",         "callback_data": "admin_backup"},
+         {"text": "♻️  Restore",        "callback_data": "admin_restore_info"}],
     ]
     if uid == OWNER_ID:
         rows.append([{"text": "🔌  API Endpoints", "callback_data": "owner_api_eps"},
@@ -245,9 +243,7 @@ def rows_stop():
 def _send_notification(chat_id, text) -> int | None:
     try:
         r = _raw_post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", {
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
+            "chat_id": chat_id, "text": text, "parse_mode": "HTML",
             "disable_web_page_preview": True,
         })
         if r.get("ok"):
@@ -259,8 +255,7 @@ def _send_notification(chat_id, text) -> int | None:
 def _pin_message_botapi(chat_id, message_id):
     try:
         _raw_post(f"https://api.telegram.org/bot{BOT_TOKEN}/pinChatMessage", {
-            "chat_id": chat_id,
-            "message_id": message_id,
+            "chat_id": chat_id, "message_id": message_id,
             "disable_notification": False,
         })
     except Exception:
