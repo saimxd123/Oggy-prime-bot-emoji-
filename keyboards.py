@@ -140,9 +140,6 @@ async def nav_edit(chat_id, message_id, text, kb_rows, parse_mode="HTML"):
     resp = await asyncio.to_thread(_raw_post, url, txt_payload)
     return resp
 
-# ══════════════════════════════════════════════════════════════
-# Rows
-# ══════════════════════════════════════════════════════════════
 def rows_main():
     return [
         [{"text": "💳  Checker",        "callback_data": "gates"}],
@@ -261,14 +258,54 @@ def _pin_message_botapi(chat_id, message_id):
     except Exception:
         pass
 
+# ══════════════════════════════════════════════════════════════
+# Chat resolution helpers — accept -100... IDs, @usernames, t.me links
+# ══════════════════════════════════════════════════════════════
+def _to_chat_id(val):
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str) and val.lstrip('-').isdigit():
+        return int(val)
+    return val
+
+def _get_chat_info(chat_ref):
+    try:
+        r = _raw_post(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat", {
+            "chat_id": _to_chat_id(chat_ref)
+        })
+        if r.get("ok"):
+            return r["result"]
+        print(f"[getChat] {chat_ref}: {r.get('description', 'unknown')}")
+    except Exception as e:
+        print(f"[getChat] {chat_ref}: {e}")
+    return None
+
+def _get_join_link(chat_ref):
+    info = _get_chat_info(chat_ref)
+    if info:
+        if info.get("username"):
+            return f"https://t.me/{info['username']}"
+        if info.get("invite_link"):
+            return info["invite_link"]
+    try:
+        r = _raw_post(f"https://api.telegram.org/bot{BOT_TOKEN}/exportChatInviteLink", {
+            "chat_id": _to_chat_id(chat_ref)
+        })
+        if r.get("ok"):
+            return r["result"]
+    except Exception:
+        pass
+    return None
+
 def _get_chat_member(chat_ref, user_id) -> bool:
     try:
         r = _raw_post(f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMember", {
-            "chat_id": chat_ref, "user_id": user_id
+            "chat_id": _to_chat_id(chat_ref), "user_id": user_id
         })
         if r.get("ok"):
             status = r["result"].get("status")
             return status in ("creator", "administrator", "member")
-    except Exception:
-        pass
+        print(f"[getChatMember] {chat_ref}/{user_id}: {r.get('description', 'unknown')}")
+    except Exception as e:
+        print(f"[getChatMember] {chat_ref}/{user_id}: {e}")
     return False
