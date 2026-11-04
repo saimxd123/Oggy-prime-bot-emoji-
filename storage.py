@@ -103,16 +103,8 @@ def get_user_limit(uid: int) -> int:
     return 0
 
 def get_proxies_for_user(uid: int) -> list:
-    user_list = get_user_proxy_list(uid)
-    pool      = load_proxies()
-    pool_on   = user_pool_enabled.get(uid, True)
-    if is_admin(uid):
-        if user_list:
-            return (user_list + pool) if pool_on else user_list
-        return pool
-    if not user_list:
-        return []
-    return (user_list + pool) if pool_on else user_list
+    """Returns ONLY the user's own proxies. No pool mixing."""
+    return get_user_proxy_list(uid)
 
 # ══════════════════════════════════════════════════════════
 # Cards / progress
@@ -157,7 +149,7 @@ def save_gc_config(cfg: dict):
         json.dump(cfg, f, indent=2)
 
 # ══════════════════════════════════════════════════════════
-# KEYS with expiry
+# Keys
 # ══════════════════════════════════════════════════════════
 def load_keys() -> dict:
     try:
@@ -221,7 +213,7 @@ def key_expiry_text(info: dict) -> str:
     return f"{h}h left"
 
 # ══════════════════════════════════════════════════════════
-# Feedback storage — NEW
+# Feedback
 # ══════════════════════════════════════════════════════════
 def load_pending_feedback() -> dict:
     try:
