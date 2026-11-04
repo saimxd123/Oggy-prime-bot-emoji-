@@ -1,12 +1,19 @@
 """
-keyboards.py — inline keyboards with premium emoji icons.
-Buttons use icon_custom_emoji_id when an ID is configured in emojis.py.
+keyboards.py — inline keyboards wired to your emojis.py.
+
+Uses the two helpers exported by emojis.py:
+    _btn_icon_id(text)   → returns Telegram custom-emoji ID for the first
+                          emoji in the text, or None
+    _clean_btn_text(text) → strips the leading emoji from the label
+
+Buttons set `icon_custom_emoji_id` so Telegram renders the premium
+colored icon, while text stays clean.
 """
 import asyncio
 import requests
 
 from config import BOT_TOKEN, OWNER_ID
-from emojis import SEP, btn_icon
+from emojis import SEP, _btn_icon_id, _clean_btn_text
 
 
 _http_session = requests.Session()
@@ -111,134 +118,138 @@ def _get_join_link(chat):
 
 
 # ══════════════════════════════════════════════════════════
-# Button builder (with premium icon)
+# Button builder — auto-extracts icon from leading emoji
 # ══════════════════════════════════════════════════════════
-def _b(text, cb_data, key=None):
-    """Build a button. Uses icon_custom_emoji_id when configured."""
-    btn = {"text": text, "callback_data": cb_data}
-    if key:
-        icon = btn_icon(key)
-        if icon:
-            btn["icon_custom_emoji_id"] = icon
+def _b(text, cb_data):
+    """
+    Build a callback button.
+    Text must START with an emoji that exists in BUTTON_CUSTOM_EMOJIS.
+    Emoji is stripped from visible label and attached as icon.
+    """
+    icon_id = _btn_icon_id(text)
+    clean = _clean_btn_text(text)
+    btn = {"text": clean, "callback_data": cb_data}
+    if icon_id:
+        btn["icon_custom_emoji_id"] = icon_id
     return btn
 
 
-def _bu(text, url, key=None):
-    """URL button variant (for links)."""
-    btn = {"text": text, "url": url}
-    if key:
-        icon = btn_icon(key)
-        if icon:
-            btn["icon_custom_emoji_id"] = icon
+def _bu(text, url):
+    """URL button variant."""
+    icon_id = _btn_icon_id(text)
+    clean = _clean_btn_text(text)
+    btn = {"text": clean, "url": url}
+    if icon_id:
+        btn["icon_custom_emoji_id"] = icon_id
     return btn
 
 
 # ══════════════════════════════════════════════════════════
-# Menu rows
+# Menus — every label starts with an emoji from BUTTON_CUSTOM_EMOJIS
 # ══════════════════════════════════════════════════════════
 def rows_main():
     return [
-        [_b("🔥  Gates",  "gates",         "gates")],
-        [_b("🔑  Redeem", "redeem_info",   "redeem"),
-         _b("🔌  Proxy",  "manage_proxy",  "proxy")],
-        [_b("👑  Admin Panel", "admin_panel", "admin")],
-        [_b("❌  Close",  "close",         "close")],
+        [_b("🔥  Gates",       "gates")],
+        [_b("🔑  Redeem",      "redeem_info"),
+         _b("⚙️  Proxy",       "manage_proxy")],
+        [_b("👑  Admin Panel", "admin_panel")],
+        [_b("❌  Close",       "close")],
     ]
 
 
 def rows_gates():
     return [
-        [_b("💳  Shopify",         "gate_shopify", "shopify")],
-        [_b("🔥  Stripe 1$",       "gate_st1",     "st1"),
-         _b("💎  Stripe 5$",       "gate_st5",     "st5")],
-        [_b("✅  Stripe Auth2 $0", "gate_auth",    "auth")],
-        [_b("⚡  Stripe Auth2 v2",  "gate_auth1",   "auth1")],
-        [_b("🅱️  Braintree",       "gate_btauth",  "btauth")],
-        [_b("🔌  Manage Proxy",    "manage_proxy","proxy")],
-        [_b("↪️  Back",            "back_start",   "back")],
+        [_b("💳  Shopify",         "gate_shopify")],
+        [_b("🔥  Stripe 1$",       "gate_st1"),
+         _b("💎  Stripe 5$",       "gate_st5")],
+        [_b("✅  Stripe Auth2 $0", "gate_auth")],
+        [_b("⚡  Stripe Auth2 v2",  "gate_auth1")],
+        [_b("🤖  Braintree",       "gate_btauth")],
+        [_b("🌐  Manage Proxy",    "manage_proxy")],
+        [_b("↪️  Back",            "back_start")],
     ]
 
 
 def rows_proxy(uid):
     return [
-        [_b("🧪  Test Proxy", "test_proxy_btn",   "proxy"),
-         _b("🗑️  Remove",     "remove_proxy_btn", "close")],
-        [_b("↪️  Back",       "back_start",       "back")],
+        [_b("🛡  Test Proxy", "test_proxy_btn"),
+         _b("❌  Remove",     "remove_proxy_btn")],
+        [_b("↪️  Back",       "back_start")],
     ]
 
 
 def rows_stop():
-    return [[_b("⛔  Stop Check", "stop_mass", "stop")]]
+    return [[_b("⚠️  Stop Check", "stop_mass")]]
 
 
 def rows_admin(uid):
     is_owner = (uid == OWNER_ID)
     rows = [
-        [_b("👤  Users",  "admin_users",       "admin"),
-         _b("🌐  Sites",  "admin_sites",       "admin")],
-        [_b("📡  Proxy Pool", "admin_proxy_pool", "proxy")],
-        [_b("📢  Broadcast",  "admin_broadcast_info", "admin")],
-        [_b("📦  Backup",     "admin_backup",        "admin"),
-         _b("♻️  Restore",    "admin_restore_info",  "admin")],
+        [_b("📋  Users", "admin_users"),
+         _b("🌐  Sites", "admin_sites")],
+        [_b("📡  Proxy Pool", "admin_proxy_pool")],
+        [_b("💫  Broadcast",  "admin_broadcast_info")],
+        [_b("💻  Backup",     "admin_backup"),
+         _b("⭐  Restore",    "admin_restore_info")],
     ]
     if is_owner:
-        rows.append([_b("🔌  API Endpoints", "owner_api_eps", "admin")])
-        rows.append([_b("🔑  Keys",          "owner_keys",    "redeem"),
-                     _b("🛡  GC/Channels",   "owner_gc",      "admin")])
-    rows.append([_b("↪️  Back", "back_start", "back")])
+        rows.append([_b("⚙️  API Endpoints", "owner_api_eps")])
+        rows.append([_b("🔑  Keys",          "owner_keys"),
+                     _b("🛡  GC/Channels",   "owner_gc")])
+    rows.append([_b("↪️  Back", "back_start")])
     return rows
 
 
 def rows_admin_users():
     return [
-        [_b("📋  List Users", "admin_list_users", "admin")],
-        [_b("✅  Add User", "admin_add_user_info", "admin"),
-         _b("❌  Remove",   "admin_rm_user_info",  "close")],
-        [_b("↪️  Back", "admin_panel", "back")],
+        [_b("📋  List Users", "admin_list_users")],
+        [_b("✅  Add User",   "admin_add_user_info"),
+         _b("❌  Remove",     "admin_rm_user_info")],
+        [_b("↪️  Back",       "admin_panel")],
     ]
 
 
 def rows_admin_sites():
     return [
-        [_b("📋  List Sites", "admin_list_sites_cb", "admin")],
-        [_b("✅  Add Site", "admin_add_site_info",  "admin"),
-         _b("❌  Remove",   "admin_rm_site_info",   "close")],
-        [_b("↪️  Back", "admin_panel", "back")],
+        [_b("📋  List Sites", "admin_list_sites_cb")],
+        [_b("✅  Add Site",   "admin_add_site_info"),
+         _b("❌  Remove",     "admin_rm_site_info")],
+        [_b("↪️  Back",       "admin_panel")],
     ]
 
 
 def rows_admin_proxy_pool():
     return [
-        [_b("📋  List Pool", "admin_list_proxy_cb", "proxy")],
-        [_b("✅  Add",  "admin_add_proxy_info",   "proxy"),
-         _b("🗑️  Clear","admin_clear_proxy_cb",   "close")],
-        [_b("↪️  Back", "admin_panel", "back")],
+        [_b("📋  List Pool", "admin_list_proxy_cb")],
+        [_b("✅  Add",       "admin_add_proxy_info"),
+         _b("❌  Clear",     "admin_clear_proxy_cb")],
+        [_b("↪️  Back",      "admin_panel")],
     ]
 
 
 def rows_owner_api_eps():
     return [
-        [_b("📋  List", "owner_api_list",     "admin")],
-        [_b("✅  Add",  "owner_api_add_info", "admin"),
-         _b("❌  Remove","owner_api_rm_info", "close")],
-        [_b("↪️  Back", "admin_panel",        "back")],
+        [_b("📋  List",     "owner_api_list")],
+        [_b("✅  Add",      "owner_api_add_info"),
+         _b("❌  Remove",   "owner_api_rm_info")],
+        [_b("↪️  Back",     "admin_panel")],
     ]
 
 
 def rows_owner_keys():
     return [
-        [_b("📋  List Keys",     "owner_key_list",     "redeem")],
-        [_b("✅  Generate Keys", "owner_key_gen_info", "redeem")],
-        [_b("↪️  Back",          "admin_panel",        "back")],
+        [_b("📋  List Keys",     "owner_key_list")],
+        [_b("✅  Generate Keys", "owner_key_gen_info")],
+        [_b("↪️  Back",          "admin_panel")],
     ]
 
 
 def rows_owner_gc():
     return [
-        [_b("🔒  Private GC",     "owner_gc_private", "admin")],
-        [_b("🌐  Public GC",      "owner_gc_public",  "admin")],
-        [_b("📝  Log GC",         "owner_gc_log",     "admin")],
-        [_b("📢  Public Channel", "owner_gc_channel", "admin")],
-        [_b("🔗  Required Chans", "owner_gc_req",     "admin")],
-        [_b("↪️  Back",           "admin_panel",      "back")],
+        [_b("🛡  Private GC",     "owner_gc_private")],
+        [_b("🌐  Public GC",      "owner_gc_public")],
+        [_b("📋  Log GC",         "owner_gc_log")],
+        [_b("📡  Public Channel", "owner_gc_channel")],
+        [_b("🔑  Required Chans", "owner_gc_req")],
+        [_b("↪️  Back",           "admin_panel")],
     ]
