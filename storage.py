@@ -6,13 +6,13 @@ import secrets
 import string
 from config import (
     PREMIUM_FILE, SITES_FILE, PROXY_FILE, USER_PROXY_FILE, USER_POOL_FILE,
-    GC_CONFIG_FILE, KEYS_FILE, KEY_PREFIX,
+    GC_CONFIG_FILE, KEYS_FILE, FEEDBACK_FILE, KEY_PREFIX,
     ADMIN_IDS, _DEFAULT_ADMINS, LIMITS,
 )
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # User proxies
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 user_proxies: dict = {}
 
 def _to_list(val) -> list:
@@ -68,9 +68,9 @@ def save_user_pool():
     except:
         pass
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # File lists
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 def get_file_lines(fp):
     if not os.path.exists(fp):
         return []
@@ -84,9 +84,9 @@ def load_premium_users(): return get_file_lines(PREMIUM_FILE)
 def load_sites():         return get_file_lines(SITES_FILE)
 def load_proxies():       return get_file_lines(PROXY_FILE)
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # Access
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 def is_admin(uid: int) -> bool:
     return uid in ADMIN_IDS or uid in _DEFAULT_ADMINS
 
@@ -114,9 +114,9 @@ def get_proxies_for_user(uid: int) -> list:
         return []
     return (user_list + pool) if pool_on else user_list
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # Cards / progress
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 def extract_cc(text: str) -> list:
     matches = re.findall(r'(\d{15,16})\|(\d{2})\|(\d{2,4})\|(\d{3,4})', text)
     cards = []
@@ -133,9 +133,9 @@ def make_progress_bar(current, total, width=20) -> str:
     pct    = int(100 * current / total)
     return f"[{'█'*filled}{'░'*(width-filled)}] {current}/{total} ({pct}%)"
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # GC config
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 _GC_DEFAULT = {
     'private_gc': None,
     'public_gc': None,
@@ -156,9 +156,9 @@ def save_gc_config(cfg: dict):
     with open(GC_CONFIG_FILE, 'w') as f:
         json.dump(cfg, f, indent=2)
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 # KEYS with expiry
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 def load_keys() -> dict:
     try:
         with open(KEYS_FILE) as f:
@@ -194,7 +194,7 @@ def redeem_key(key: str, user_id: int):
         return False, "Invalid key"
     info = keys[k]
     if info.get('used'):
-        return False, f"Key already used"
+        return False, "Key already used"
     expires = info.get('expires', 0)
     if expires and time.time() > expires:
         return False, "Key expired"
@@ -220,8 +220,38 @@ def key_expiry_text(info: dict) -> str:
         return f"{d}d {h}h left"
     return f"{h}h left"
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
+# Feedback storage — NEW
+# ══════════════════════════════════════════════════════════
+def load_pending_feedback() -> dict:
+    try:
+        with open(FEEDBACK_FILE) as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_pending_feedback(d: dict):
+    try:
+        with open(FEEDBACK_FILE, 'w') as f:
+            json.dump(d, f, indent=2)
+    except:
+        pass
+
+def add_feedback(fbid: str, data: dict):
+    d = load_pending_feedback()
+    d[fbid] = data
+    save_pending_feedback(d)
+
+def get_feedback(fbid: str):
+    return load_pending_feedback().get(fbid)
+
+def remove_feedback(fbid: str):
+    d = load_pending_feedback()
+    d.pop(fbid, None)
+    save_pending_feedback(d)
+
+# ══════════════════════════════════════════════════════════
 # Init
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 load_user_proxies()
 load_user_pool()
