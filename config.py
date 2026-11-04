@@ -1,13 +1,12 @@
 """
 config.py — central configuration.
-Values come from env vars (Render / .env) with sensible fallbacks.
 """
 import os
 import json
 
 
 # ══════════════════════════════════════════════════════════
-# Telegram API credentials (required)
+# Telegram API credentials
 # ══════════════════════════════════════════════════════════
 API_ID    = int(os.getenv('API_ID', '0'))
 API_HASH  = os.getenv('API_HASH', '')
@@ -32,28 +31,22 @@ DEV_LINE = (
 # ══════════════════════════════════════════════════════════
 # File paths
 # ══════════════════════════════════════════════════════════
-PREMIUM_FILE    = 'premium.txt'
-SITES_FILE      = 'sites.txt'
-PROXY_FILE      = 'proxy.txt'
-USER_PROXY_FILE = 'user_proxies.json'
-USER_POOL_FILE  = 'user_pool.json'
-GC_CONFIG_FILE  = 'gc_config.json'
-KEYS_FILE       = 'keys.json'
-FEEDBACK_FILE   = 'feedback.json'
-
-# ── check_engine.py needs these three ──
-API_ENDPOINTS_FILE   = 'api_endpoints.json'
-DEFAULT_API_ENDPOINTS = [
-    # Fill in your checker API(s) here, e.g.:
-    # 'https://api.your-checker.com/shopify/check',
-    # Or leave empty and add them at runtime with /addapi in Telegram.
-]
+PREMIUM_FILE     = 'premium.txt'
+SITES_FILE       = 'sites.txt'
+PROXY_FILE       = 'proxy.txt'                 # legacy, unused for checks
+USER_PROXY_FILE  = 'user_proxies.json'
+USER_POOL_FILE   = 'user_pool.json'
+GC_CONFIG_FILE   = 'gc_config.json'
+KEYS_FILE        = 'keys.json'
+FEEDBACK_FILE    = 'feedback.json'
+API_ENDPOINTS_FILE = 'api_endpoints.json'
+DEFAULT_API_ENDPOINTS = []
 
 KEY_PREFIX = os.getenv('KEY_PREFIX', 'OGGY')
 
 
 # ══════════════════════════════════════════════════════════
-# Admins — mutable set, persisted to admin.json
+# Admins
 # ══════════════════════════════════════════════════════════
 _DEFAULT_ADMINS = {OWNER_ID}
 _ADMIN_FILE     = 'admin.json'
@@ -94,12 +87,8 @@ LIMITS = {
 MASS_WORKERS = int(os.getenv('MASS_WORKERS', '30'))
 
 
-# ══════════════════════════════════════════════════════════
-# Startup validation
-# ══════════════════════════════════════════════════════════
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise SystemExit(
-        "❌ Missing required env vars:\n"
-        "   API_ID, API_HASH, BOT_TOKEN\n"
-        "   Set them on Render → Environment (or in .env)."
+        "❌ Missing env vars: API_ID, API_HASH, BOT_TOKEN\n"
+        "   Set them on Render → Environment."
     )
