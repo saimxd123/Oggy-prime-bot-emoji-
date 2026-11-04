@@ -1,23 +1,20 @@
 import os
 import json
 
-# ── Telegram API (set in Render → Environment tab) ─────────────────
 API_ID    = int(os.environ.get('API_ID',    '0'))
 API_HASH  =     os.environ.get('API_HASH',  '')
-BOT_TOKEN =     os.environ.get('BOT_TOKEN', '')     # ← MUST come from Render env
+BOT_TOKEN =     os.environ.get('BOT_TOKEN', '')
 TG_API    = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# ── Brand ──────────────────────────────────────────────────────────
 BOT_BRAND      = "𝑶𝑮𝑮𝒀'𝑺 𝑷𝑹𝑰𝑴𝑬 𝑩𝑶𝑻"
 OWNER_NAME     = '𝑶𝑮𝑮𝒀 𝑷𝑹𝑶𝑶'
 OWNER_USERNAME = 'oggyproo'
 OWNER_ID       = 8919487892
 DEV_LINE       = f'💻 <b>Dev</b>  »  <a href="https://t.me/{OWNER_USERNAME}">{OWNER_NAME}</a>'
 
-# ── Runtime ────────────────────────────────────────────────────────
-MASS_WORKERS = int(os.environ.get('MASS_WORKERS', '60'))
+# Calm mode — 20 workers × 1 site + 1 proxy per round
+MASS_WORKERS = int(os.environ.get('MASS_WORKERS', '20'))
 
-# ── Files ──────────────────────────────────────────────────────────
 _ADMIN_FILE         = os.path.join(os.path.dirname(__file__), 'admin.json')
 PREMIUM_FILE        = 'premium.txt'
 SITES_FILE          = 'sites.txt'
@@ -28,16 +25,11 @@ API_ENDPOINTS_FILE  = 'api_endpoints.json'
 GC_CONFIG_FILE      = 'gc_config.json'
 KEYS_FILE           = 'keys.json'
 
-# ── Defaults ───────────────────────────────────────────────────────
 DEFAULT_API_ENDPOINTS = ["https://check.yzio.app"]
 KEY_PREFIX            = "OGGY-PROO"
 
-LIMITS = {
-    "admin":   10000,
-    "premium": 5000,
-}
+LIMITS = {"admin": 10000, "premium": 5000}
 
-# ── Admin helpers ──────────────────────────────────────────────────
 _DEFAULT_ADMINS = (
     {int(x.strip()) for x in os.environ.get('ADMIN_ID', '').split(',') if x.strip().isdigit()}
     | ({OWNER_ID} if OWNER_ID else set())
