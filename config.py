@@ -10,9 +10,9 @@ BOT_BRAND      = "𝑶𝑮𝑮𝒀'𝑺 𝑷𝑹𝑰𝑴𝑬 𝑩𝑶𝑻"
 OWNER_NAME     = '𝑶𝑮𝑮𝒀 𝑷𝑹𝑶𝑶'
 OWNER_USERNAME = 'oggyproo'
 OWNER_ID       = 8919487892
+BOT_USERNAME   = 'OGGYsPRIME_BOT'
 DEV_LINE       = f'💻 <b>Dev</b>  »  <a href="https://t.me/{OWNER_USERNAME}">{OWNER_NAME}</a>'
 
-# Calm mode — 20 workers × 1 site + 1 proxy per round
 MASS_WORKERS = int(os.environ.get('MASS_WORKERS', '20'))
 
 _ADMIN_FILE         = os.path.join(os.path.dirname(__file__), 'admin.json')
@@ -24,8 +24,13 @@ USER_POOL_FILE      = 'user_pool.json'
 API_ENDPOINTS_FILE  = 'api_endpoints.json'
 GC_CONFIG_FILE      = 'gc_config.json'
 KEYS_FILE           = 'keys.json'
+FEEDBACK_FILE       = 'feedback_pending.json'
 
-DEFAULT_API_ENDPOINTS = ["https://check.yzio.app"]
+# ── New API is default active; old one available for switch ──
+DEFAULT_API_ENDPOINTS = [
+    "http://62.169.23.129:8080/shopii",
+    "https://check.yzio.app/shopify",
+]
 KEY_PREFIX            = "OGGY-PROO"
 
 LIMITS = {"admin": 10000, "premium": 5000}
