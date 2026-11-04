@@ -1,23 +1,21 @@
 """
-keyboards.py — inline keyboards + raw Bot API helpers.
+keyboards.py — inline keyboards with premium emoji icons.
+Buttons use icon_custom_emoji_id when an ID is configured in emojis.py.
 """
 import asyncio
 import requests
 
 from config import BOT_TOKEN, OWNER_ID
+from emojis import SEP, btn_icon
 
 
-# ══════════════════════════════════════════════════════════
-# Shared HTTP session
-# ══════════════════════════════════════════════════════════
 _http_session = requests.Session()
 
 
 # ══════════════════════════════════════════════════════════
-# Raw Bot API — sync core  ← bot.py imports this
+# Raw Bot API
 # ══════════════════════════════════════════════════════════
 def _raw_post(method, payload, timeout=15):
-    """Synchronous POST to Telegram Bot API. Returns parsed JSON."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     try:
         r = _http_session.post(url, json=payload, timeout=timeout)
@@ -26,15 +24,10 @@ def _raw_post(method, payload, timeout=15):
         return {"ok": False}
 
 
-# ══════════════════════════════════════════════════════════
-# Async wrappers
-# ══════════════════════════════════════════════════════════
 async def raw_send(chat_id, text, buttons=None, reply_to=None):
     payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
+        "chat_id": chat_id, "text": text,
+        "parse_mode": "HTML", "disable_web_page_preview": True,
     }
     if reply_to is not None:
         payload["reply_to_message_id"] = reply_to
@@ -46,10 +39,8 @@ async def raw_send(chat_id, text, buttons=None, reply_to=None):
 
 async def raw_edit(chat_id, message_id, text, buttons=None):
     payload = {
-        "chat_id": chat_id,
-        "message_id": message_id,
-        "text": text,
-        "parse_mode": "HTML",
+        "chat_id": chat_id, "message_id": message_id,
+        "text": text, "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
     if buttons is not None:
@@ -67,7 +58,7 @@ async def nav_edit(chat_id, message_id, text, buttons=None):
 
 
 # ══════════════════════════════════════════════════════════
-# Sync helpers (call via asyncio.to_thread)
+# Sync helpers
 # ══════════════════════════════════════════════════════════
 def _send_notification(chat_id, text):
     data = _raw_post("sendMessage", {
@@ -120,111 +111,134 @@ def _get_join_link(chat):
 
 
 # ══════════════════════════════════════════════════════════
-# Menus
+# Button builder (with premium icon)
+# ══════════════════════════════════════════════════════════
+def _b(text, cb_data, key=None):
+    """Build a button. Uses icon_custom_emoji_id when configured."""
+    btn = {"text": text, "callback_data": cb_data}
+    if key:
+        icon = btn_icon(key)
+        if icon:
+            btn["icon_custom_emoji_id"] = icon
+    return btn
+
+
+def _bu(text, url, key=None):
+    """URL button variant (for links)."""
+    btn = {"text": text, "url": url}
+    if key:
+        icon = btn_icon(key)
+        if icon:
+            btn["icon_custom_emoji_id"] = icon
+    return btn
+
+
+# ══════════════════════════════════════════════════════════
+# Menu rows
 # ══════════════════════════════════════════════════════════
 def rows_main():
     return [
-        [{"text": "🔥  Gates",  "callback_data": "gates"}],
-        [{"text": "🔑  Redeem", "callback_data": "redeem_info"},
-         {"text": "🔌  Proxy",  "callback_data": "manage_proxy"}],
-        [{"text": "👑  Admin Panel", "callback_data": "admin_panel"}],
-        [{"text": "❌  Close",  "callback_data": "close"}],
+        [_b("🔥  Gates",  "gates",         "gates")],
+        [_b("🔑  Redeem", "redeem_info",   "redeem"),
+         _b("🔌  Proxy",  "manage_proxy",  "proxy")],
+        [_b("👑  Admin Panel", "admin_panel", "admin")],
+        [_b("❌  Close",  "close",         "close")],
     ]
 
 
 def rows_gates():
     return [
-        [{"text": "💳  Shopify",         "callback_data": "gate_shopify"}],
-        [{"text": "🔥  Stripe 1$",       "callback_data": "gate_st1"},
-         {"text": "💎  Stripe 5$",       "callback_data": "gate_st5"}],
-        [{"text": "✅  Stripe Auth2 $0", "callback_data": "gate_auth"}],
-        [{"text": "⚡  Stripe Auth2 v2",  "callback_data": "gate_auth1"}],
-        [{"text": "🅱️  Braintree",       "callback_data": "gate_btauth"}],
-        [{"text": "🔑  Manage Proxy",    "callback_data": "manage_proxy"}],
-        [{"text": "↪️  Back",            "callback_data": "back_start"}],
+        [_b("💳  Shopify",         "gate_shopify", "shopify")],
+        [_b("🔥  Stripe 1$",       "gate_st1",     "st1"),
+         _b("💎  Stripe 5$",       "gate_st5",     "st5")],
+        [_b("✅  Stripe Auth2 $0", "gate_auth",    "auth")],
+        [_b("⚡  Stripe Auth2 v2",  "gate_auth1",   "auth1")],
+        [_b("🅱️  Braintree",       "gate_btauth",  "btauth")],
+        [_b("🔌  Manage Proxy",    "manage_proxy","proxy")],
+        [_b("↪️  Back",            "back_start",   "back")],
     ]
 
 
 def rows_proxy(uid):
     return [
-        [{"text": "🧪  Test Proxy", "callback_data": "test_proxy_btn"},
-         {"text": "🗑️  Remove",     "callback_data": "remove_proxy_btn"}],
-        [{"text": "↪️  Back",       "callback_data": "back_start"}],
+        [_b("🧪  Test Proxy", "test_proxy_btn",   "proxy"),
+         _b("🗑️  Remove",     "remove_proxy_btn", "close")],
+        [_b("↪️  Back",       "back_start",       "back")],
     ]
 
 
 def rows_stop():
-    return [[{"text": "⛔  Stop Check", "callback_data": "stop_mass"}]]
+    return [[_b("⛔  Stop Check", "stop_mass", "stop")]]
 
 
 def rows_admin(uid):
     is_owner = (uid == OWNER_ID)
     rows = [
-        [{"text": "👤  Users", "callback_data": "admin_users"},
-         {"text": "🌐  Sites", "callback_data": "admin_sites"}],
-        [{"text": "📡  Proxy Pool", "callback_data": "admin_proxy_pool"}],
-        [{"text": "📢  Broadcast",  "callback_data": "admin_broadcast_info"}],
-        [{"text": "📦  Backup",     "callback_data": "admin_backup"},
-         {"text": "♻️  Restore",    "callback_data": "admin_restore_info"}],
+        [_b("👤  Users",  "admin_users",       "admin"),
+         _b("🌐  Sites",  "admin_sites",       "admin")],
+        [_b("📡  Proxy Pool", "admin_proxy_pool", "proxy")],
+        [_b("📢  Broadcast",  "admin_broadcast_info", "admin")],
+        [_b("📦  Backup",     "admin_backup",        "admin"),
+         _b("♻️  Restore",    "admin_restore_info",  "admin")],
     ]
     if is_owner:
-        rows.append([{"text": "🔌  API Endpoints", "callback_data": "owner_api_eps"}])
-        rows.append([{"text": "🔑  Keys",          "callback_data": "owner_keys"},
-                     {"text": "🛡  GC/Channels",   "callback_data": "owner_gc"}])
-    rows.append([{"text": "↪️  Back", "callback_data": "back_start"}])
+        rows.append([_b("🔌  API Endpoints", "owner_api_eps", "admin")])
+        rows.append([_b("🔑  Keys",          "owner_keys",    "redeem"),
+                     _b("🛡  GC/Channels",   "owner_gc",      "admin")])
+    rows.append([_b("↪️  Back", "back_start", "back")])
     return rows
 
 
 def rows_admin_users():
     return [
-        [{"text": "📋  List Users", "callback_data": "admin_list_users"}],
-        [{"text": "✅  Add User",   "callback_data": "admin_add_user_info"},
-         {"text": "❌  Remove",     "callback_data": "admin_rm_user_info"}],
-        [{"text": "↪️  Back",       "callback_data": "admin_panel"}],
+        [_b("📋  List Users", "admin_list_users", "admin")],
+        [_b("✅  Add User", "admin_add_user_info", "admin"),
+         _b("❌  Remove",   "admin_rm_user_info",  "close")],
+        [_b("↪️  Back", "admin_panel", "back")],
     ]
 
 
 def rows_admin_sites():
     return [
-        [{"text": "📋  List Sites", "callback_data": "admin_list_sites_cb"}],
-        [{"text": "✅  Add Site",   "callback_data": "admin_add_site_info"},
-         {"text": "❌  Remove",     "callback_data": "admin_rm_site_info"}],
-        [{"text": "↪️  Back",       "callback_data": "admin_panel"}],
+        [_b("📋  List Sites", "admin_list_sites_cb", "admin")],
+        [_b("✅  Add Site", "admin_add_site_info",  "admin"),
+         _b("❌  Remove",   "admin_rm_site_info",   "close")],
+        [_b("↪️  Back", "admin_panel", "back")],
     ]
 
 
 def rows_admin_proxy_pool():
     return [
-        [{"text": "📋  List Pool", "callback_data": "admin_list_proxy_cb"}],
-        [{"text": "✅  Add",       "callback_data": "admin_add_proxy_info"},
-         {"text": "🗑️  Clear",     "callback_data": "admin_clear_proxy_cb"}],
-        [{"text": "↪️  Back",      "callback_data": "admin_panel"}],
+        [_b("📋  List Pool", "admin_list_proxy_cb", "proxy")],
+        [_b("✅  Add",  "admin_add_proxy_info",   "proxy"),
+         _b("🗑️  Clear","admin_clear_proxy_cb",   "close")],
+        [_b("↪️  Back", "admin_panel", "back")],
     ]
 
 
 def rows_owner_api_eps():
     return [
-        [{"text": "📋  List", "callback_data": "owner_api_list"}],
-        [{"text": "✅  Add",  "callback_data": "owner_api_add_info"},
-         {"text": "❌  Remove", "callback_data": "owner_api_rm_info"}],
-        [{"text": "↪️  Back", "callback_data": "admin_panel"}],
+        [_b("📋  List", "owner_api_list",     "admin")],
+        [_b("✅  Add",  "owner_api_add_info", "admin"),
+         _b("❌  Remove","owner_api_rm_info", "close")],
+        [_b("↪️  Back", "admin_panel",        "back")],
     ]
 
 
 def rows_owner_keys():
     return [
-        [{"text": "📋  List Keys",     "callback_data": "owner_key_list"}],
-        [{"text": "✅  Generate Keys", "callback_data": "owner_key_gen_info"}],
-        [{"text": "↪️  Back",          "callback_data": "admin_panel"}],
+        [_b("📋  List Keys",     "owner_key_list",     "redeem")],
+        [_b("✅  Generate Keys", "owner_key_gen_info", "redeem")],
+        [_b("↪️  Back",          "admin_panel",        "back")],
     ]
 
 
 def rows_owner_gc():
     return [
-        [{"text": "🔒  Private GC",     "callback_data": "owner_gc_private"}],
-        [{"text": "🌐  Public GC",      "callback_data": "owner_gc_public"}],
-        [{"text": "📝  Log GC",         "callback_data": "owner_gc_log"}],
-        [{"text": "📢  Public Channel", "callback_data": "owner_gc_channel"}],
-        [{"text": "🔗  Required Chans", "callback_data": "owner_gc_req"}],
-        [{"text": "↪️  Back",           "callback_data": "admin_panel"}],
+        [_b("🔒  Private GC",     "owner_gc_private", "admin")],
+        [_b("🌐  Public GC",      "owner_gc_public",  "admin")],
+        [_b("📝  Log GC",         "owner_gc_log",     "admin")],
+        [_b("📢  Public Channel", "owner_gc_channel", "admin")],
+        [_b("🔗  Required Chans", "owner_gc_req",     "admin")],
+        [_b("↪️  Back",           "admin_panel",      "back")],
     ]
