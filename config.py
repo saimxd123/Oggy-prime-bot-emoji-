@@ -1,14 +1,13 @@
 """
 config.py — central configuration.
-All values come from env vars (Render / .env) with sensible fallbacks.
-Mutable ADMIN_IDS set is persisted to admin.json so /setadmin survives restarts.
+Values come from env vars (Render / .env) with sensible fallbacks.
 """
 import os
 import json
 
 
 # ══════════════════════════════════════════════════════════
-# Telegram API credentials
+# Telegram API credentials (required)
 # ══════════════════════════════════════════════════════════
 API_ID    = int(os.getenv('API_ID', '0'))
 API_HASH  = os.getenv('API_HASH', '')
@@ -33,14 +32,22 @@ DEV_LINE = (
 # ══════════════════════════════════════════════════════════
 # File paths
 # ══════════════════════════════════════════════════════════
-PREMIUM_FILE     = 'premium.txt'          # premium users (one id per line)
-SITES_FILE       = 'sites.txt'            # shopify sites (one url per line)
-PROXY_FILE       = 'proxy.txt'            # legacy proxy pool
-USER_PROXY_FILE  = 'user_proxies.json'    # per-user proxies
-USER_POOL_FILE   = 'user_pool.json'       # per-user pool toggle
-GC_CONFIG_FILE   = 'gc_config.json'       # gc/channel links
-KEYS_FILE        = 'keys.json'            # redeemable keys
-FEEDBACK_FILE    = 'feedback.json'        # pending feedback
+PREMIUM_FILE    = 'premium.txt'
+SITES_FILE      = 'sites.txt'
+PROXY_FILE      = 'proxy.txt'
+USER_PROXY_FILE = 'user_proxies.json'
+USER_POOL_FILE  = 'user_pool.json'
+GC_CONFIG_FILE  = 'gc_config.json'
+KEYS_FILE       = 'keys.json'
+FEEDBACK_FILE   = 'feedback.json'
+
+# ── check_engine.py needs these three ──
+API_ENDPOINTS_FILE   = 'api_endpoints.json'
+DEFAULT_API_ENDPOINTS = [
+    # Fill in your checker API(s) here, e.g.:
+    # 'https://api.your-checker.com/shopify/check',
+    # Or leave empty and add them at runtime with /addapi in Telegram.
+]
 
 KEY_PREFIX = os.getenv('KEY_PREFIX', 'OGGY')
 
@@ -53,7 +60,6 @@ _ADMIN_FILE     = 'admin.json'
 
 
 def _load_admin_ids() -> set:
-    """Load admin set from disk; owner is always guaranteed present."""
     try:
         with open(_ADMIN_FILE, 'r') as f:
             data = json.load(f)
@@ -65,7 +71,6 @@ def _load_admin_ids() -> set:
 
 
 def _save_admin_ids(ids: set):
-    """Persist admin set to disk (used by /setadmin)."""
     try:
         with open(_ADMIN_FILE, 'w') as f:
             json.dump({'admins': sorted(int(x) for x in ids)}, f, indent=2)
@@ -74,16 +79,16 @@ def _save_admin_ids(ids: set):
 
 
 ADMIN_IDS: set = _load_admin_ids()
-ADMIN_ID       = OWNER_ID       # alias for legacy code
+ADMIN_ID       = OWNER_ID
 
 
 # ══════════════════════════════════════════════════════════
 # Limits & concurrency
 # ══════════════════════════════════════════════════════════
 LIMITS = {
-    'admin':   5000,   # max cards per mass check
+    'admin':   5000,
     'premium': 1000,
-    'user':       0,   # no access
+    'user':       0,
 }
 
 MASS_WORKERS = int(os.getenv('MASS_WORKERS', '30'))
